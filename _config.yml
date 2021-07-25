@@ -28,9 +28,12 @@ twitter_username: tejas_foo
 github_username:  tejas-n
 
 # Build settings
-theme: minima
 plugins:
   - jekyll-feed
+  - jekyll-spaceship
+  - jekyll-remote-theme
+
+remote_theme: jekyll/minima@3cdd14dff1216f561c68329e0b7420c2dc9b796a
 
 # Exclude from processing.
 # The following items will not be processed, by default.
