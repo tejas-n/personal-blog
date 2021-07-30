@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.2.0">Jekyll</generator><link href="https://tejasn.com/feed.xml" rel="self" type="application/atom+xml" /><link href="https://tejasn.com/" rel="alternate" type="text/html" /><updated>2021-07-30T06:03:36+00:00</updated><id>https://tejasn.com/feed.xml</id><title type="html">Tejas’ Blog</title><subtitle>A personal blog of Tejas Nandanikar.</subtitle><entry><title type="html">How Iterative Deepening Search Combines the Best of DFS and BFS</title><link href="https://tejasn.com/artificial-intelligence/2021/07/25/iterative-deepening-search.html" rel="alternate" type="text/html" title="How Iterative Deepening Search Combines the Best of DFS and BFS" /><published>2021-07-25T08:05:00+00:00</published><updated>2021-07-25T08:05:00+00:00</updated><id>https://tejasn.com/artificial-intelligence/2021/07/25/iterative-deepening-search</id><content type="html" xml:base="https://tejasn.com/artificial-intelligence/2021/07/25/iterative-deepening-search.html">&lt;p&gt;Breadth-first search(BFS) and Depth-first search(DFS) are the most basic uninformed search strategies used in A.I. In this article, we are going to look at how iterative deepening search combines the best of Breadth-first search(BFS) and Depth-first search(DFS). A basic understanding of graph theory in context of A.I. and “Big O Notation” is necessary to understand the article. We are going to compare the algorithms based on the following criterias:&lt;/p&gt;
+
+&lt;ol&gt;
+  &lt;li&gt;&lt;strong&gt;Completeness:&lt;/strong&gt; Is the algorithm guaranteed to find a solution if there is one?&lt;/li&gt;
+  &lt;li&gt;&lt;strong&gt;Optimality:&lt;/strong&gt; Is the algorithm guaranteed to find a solution which has the lowest path cost?&lt;/li&gt;
+  &lt;li&gt;&lt;strong&gt;Time Complexity:&lt;/strong&gt; Time required to find a solution. It’s usually measured in terms of the number of nodes generated and is represented with the &lt;a href=&quot;https://en.wikipedia.org/wiki/Big_O_notation&quot;&gt;Big O Notation&lt;/a&gt;.&lt;/li&gt;
+  &lt;li&gt;&lt;strong&gt;Space Complexity:&lt;/strong&gt; Memory required to find a solution. It’s usually measure in terms of the maximum number of nodes stored in the memory and is represented with the &lt;a href=&quot;https://en.wikipedia.org/wiki/Big_O_notation&quot;&gt;Big O Notation&lt;/a&gt;.&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h2 id=&quot;breadth-first-searchbfs&quot;&gt;Breadth-first search(BFS)&lt;/h2&gt;
+&lt;p&gt;&lt;img src=&quot;https://drive.google.com/uc?export=view&amp;amp;id=1QG0byGiB4AwWzQFcRibwsdsZkSaexMqm&quot; alt=&quot;Diagram of a BFS tree&quot; /&gt;&lt;/p&gt;
+&lt;p style=&quot;text-align: center;&quot;&gt;&lt;a href=&quot;https://commons.wikimedia.org/wiki/File:Breadth-first-tree.svg&quot;&gt;Alexander Drichel&lt;/a&gt;, &lt;a href=&quot;https://creativecommons.org/licenses/by/3.0&quot;&gt;CC BY 3.0&lt;/a&gt;, via Wikimedia Commons&lt;/p&gt;
+
+&lt;p&gt;As the name suggests, BFS strategy expands the root node first, then all of its successors are expanded next and so on. If you look at the image, the numbers inside the nodes represent the order in which the nodes are expanded. In simple words, all the nodes at any given level are expanded first before any node at the next level is expanded.&lt;/p&gt;
+
+&lt;h3 id=&quot;pros-of-using-bfs-strategy&quot;&gt;Pros of using BFS strategy&lt;/h3&gt;
+&lt;ol&gt;
+  &lt;li&gt;The BFS strategy is &lt;em&gt;complete&lt;/em&gt; provided the branching factor &lt;em&gt;b&lt;/em&gt;(number of children at each node) is finite. It means that it is guaranteed to find the goal node at depth &lt;em&gt;d&lt;/em&gt;, as it would reach the goal node eventually after expanding all the shallower nodes.&lt;/li&gt;
+  &lt;li&gt;The BFS strategy is &lt;em&gt;optimal&lt;/em&gt; provided the path cost is a nondecreasing function of the depth of the node(for example when all the edges have the same cost)&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h3 id=&quot;cons-of-using-bfs-strategy&quot;&gt;Cons of using BFS strategy&lt;/h3&gt;
+&lt;p&gt;&lt;strong&gt;BFS strategy has huge memory requirements.&lt;/strong&gt; To give you an example, consider a state space where every state has &lt;em&gt;b&lt;/em&gt; successors. The search begins from the root node which generates &lt;em&gt;b&lt;/em&gt; successors at the first node, then those &lt;em&gt;b&lt;/em&gt; nodes generate $b^2$ nodes a the second level and so on.
+Now consider that the goal state is at level &lt;em&gt;d&lt;/em&gt;, then the total number of nodes generated would be&lt;/p&gt;
+
+&lt;p&gt;$b + b^2 \ + \ . . \ + \ b^d + (b^{d+1} - b) = O(b^{d+1})$&lt;/p&gt;
+
+&lt;p&gt;You can clearly see that the number of nodes and space requirement grows exponentially with depth. And you have to keep all those nodes in the memory as each of them is either a fringe(nodes that have been generated but not been expanded) or is an ancestor of a fringe node.&lt;/p&gt;
+
+&lt;h2 id=&quot;depth-first-searchdfs&quot;&gt;Depth-first search(DFS)&lt;/h2&gt;
+&lt;p&gt;&lt;img src=&quot;https://drive.google.com/uc?export=view&amp;amp;id=1Zrj8o9Oj3iu2eVeKfV5CO6Bg9IzEQ_wn&quot; alt=&quot;Diagram of a BFS tree&quot; /&gt;&lt;/p&gt;
+&lt;p style=&quot;text-align: center;&quot;&gt;&lt;a href=&quot;https://commons.wikimedia.org/wiki/File:Depth-first-tree.svg&quot;&gt;Alexander Drichel&lt;/a&gt;, &lt;a href=&quot;https://creativecommons.org/licenses/by-sa/3.0&quot;&gt;CC BY-SA 3.0&lt;/a&gt;, via Wikimedia Commons&lt;/p&gt;
+
+&lt;p&gt;DFS strategy starts at the root node and traverses a branch till it reaches the deepest node. If you refer to the image, you can see how only one node’s branch is traversed first before any of its siblings are expanded. After a deepest node with no successor in a path is reached, the search “backs up” and expands the next successor node.&lt;/p&gt;
+
+&lt;h3 id=&quot;pros-of-using-dfs&quot;&gt;Pros of using DFS&lt;/h3&gt;
+&lt;p&gt;&lt;strong&gt;DFS doesn’t have high memory requirement.&lt;/strong&gt; It needs to store only the path from the root node to a leaf node along with the unexpanded sibling nodes for each node on the path. As soon as all of the descendants of a node are explored, it can be dropped from the memory.&lt;/p&gt;
+
+&lt;p&gt;As &lt;em&gt;b&lt;/em&gt; nodes are generated at every level, the maximum nodes in the memory in a worst case scenario would be &lt;em&gt;bm + 1&lt;/em&gt;, where m is the maximum depth(Note that &lt;em&gt;m&lt;/em&gt; could be greater than &lt;em&gt;d&lt;/em&gt;). Hence the space requirement is bounded by $O(bm)$&lt;/p&gt;
+
+&lt;h3 id=&quot;cons-of-using-dfs&quot;&gt;Cons of using DFS&lt;/h3&gt;
+&lt;ol&gt;
+  &lt;li&gt;DFS can get stuck in the wrong branch even when a different choice of branch could have lead to a solution near the root of the search tree. If the chosen branch is of unbounded depth, DFS would never terminate and hence &lt;strong&gt;its not complete.&lt;/strong&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;strong&gt;DFS is not optimal&lt;/strong&gt; since you can never know if there was any other solution at a shallower level than the found solution(Since DFS doesn’t look at sibling nodes at same level)&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h2 id=&quot;iterative-deepening-dfs&quot;&gt;Iterative deepening DFS&lt;/h2&gt;
+&lt;p&gt;&lt;img src=&quot;https://drive.google.com/uc?export=view&amp;amp;id=1G6K6hWYzMViGSvCWLk5g48lQCBEiz7MT&quot; alt=&quot;Diagram of an iterative deepening DFS tree&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Iterative deepening DFS in simple words is running DFS by gradually increasing the depth limit starting from 0, then repeating DFS from the beginning with depth limit 1, then again repeating DFS from the beginning with depth level 2, and so on, till a solution is found. So how does this combine benefits of DFS and BFS?&lt;/p&gt;
+
+&lt;ol&gt;
+  &lt;li&gt;&lt;strong&gt;It has modest memory requirements like DFS i.e. $O(bm)$.&lt;/strong&gt; I think this is pretty straight forward to understand. Since its running a DFS (although by increasing the depth level with every iteration), its memory requirements would be same as DFS.&lt;/li&gt;
+  &lt;li&gt;&lt;strong&gt;It is optimal provided the path cost is a nondecreasing function of the depth of the node, like BFS.&lt;/strong&gt; Since you are repeating the DFS strategy by increasing depth limit with every iteration, you can be sure that you traversed the siblings of your ancestors in previous iterations which in turn guarantees that no solution state existed on a shallower level.&lt;/li&gt;
+  &lt;li&gt;&lt;strong&gt;It is complete like BFS provided the branching factor is finite.&lt;/strong&gt; Since its traversing the breadth as well - as you are repeating DFS with increasing depth levels - it cannot get stuck on an infinite path.&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;Here is a table which gives an objective comparison:&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th&gt;Criterion&lt;/th&gt;
+      &lt;th&gt;BFS&lt;/th&gt;
+      &lt;th&gt;DFS&lt;/th&gt;
+      &lt;th&gt;Iterative deepening DFS&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td&gt;Time&lt;/td&gt;
+      &lt;td&gt;$O(b^{d+1})$&lt;/td&gt;
+      &lt;td&gt;$O(bm)$&lt;/td&gt;
+      &lt;td&gt;$O(b^d)$&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;Space&lt;/td&gt;
+      &lt;td&gt;$O(b^{d+1})$&lt;/td&gt;
+      &lt;td&gt;$O(bm)$&lt;/td&gt;
+      &lt;td&gt;$O(bd)$&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;Optimal?&lt;/td&gt;
+      &lt;td&gt;Yes&lt;sup&gt;*&lt;/sup&gt;&lt;/td&gt;
+      &lt;td&gt;No&lt;/td&gt;
+      &lt;td&gt;Yes&lt;sup&gt;*&lt;/sup&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;Complete?&lt;/td&gt;
+      &lt;td&gt;Yes&lt;sup&gt;+&lt;/sup&gt;&lt;/td&gt;
+      &lt;td&gt;No&lt;/td&gt;
+      &lt;td&gt;Yes&lt;sup&gt;+&lt;/sup&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;* optimal if step costs are identical&lt;/p&gt;
+
+&lt;p&gt;+ complete if &lt;em&gt;b&lt;/em&gt; is finite&lt;/p&gt;
+
+&lt;h2 id=&quot;conclusion&quot;&gt;Conclusion&lt;/h2&gt;
+
+&lt;p&gt;Iterative deepening DFS combines the memory efficiency of DFS and the completeness and optimality of BFS. You might think that IDS is inefficient since it expands many nodes multiple times in every iteration but that’s not the case since the nodes that would be generated the most number of times would be the nodes at the top. And since less number of nodes are generated at the top, it wouldn’t have a significant impact.&lt;/p&gt;
+
+&lt;h2 id=&quot;bibliography&quot;&gt;Bibliography&lt;/h2&gt;
+&lt;p&gt;S. Russell and P. Norvig, &lt;em&gt;Artificial Intelligence: A Modern Approach&lt;/em&gt;, 2nd ed. Prentice Hall, 2003.&lt;/p&gt;</content><author><name></name></author><category term="artificial-intelligence" /><summary type="html">Breadth-first search(BFS) and Depth-first search(DFS) are the most basic uninformed search strategies used in A.I. In this article, we are going to look at how iterative deepening search combines the best of Breadth-first search(BFS) and Depth-first search(DFS). A basic understanding of graph theory in context of A.I. and “Big O Notation” is necessary to understand the article. We are going to compare the algorithms based on the following criterias:</summary></entry></feed>
