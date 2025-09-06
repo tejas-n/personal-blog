@@ -1,0 +1,593 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.2.2">Jekyll</generator><link href="https://tejasn.com/feed.xml" rel="self" type="application/atom+xml" /><link href="https://tejasn.com/" rel="alternate" type="text/html" /><updated>2025-09-06T13:22:12+00:00</updated><id>https://tejasn.com/feed.xml</id><title type="html">Tejas’ Blog</title><subtitle>A personal blog of Tejas Nandanikar.</subtitle><entry><title type="html">The Curious Case of SSH PasswordAuthentication</title><link href="https://tejasn.com/linux/2025/09/06/curious-case-of-ssh-passwordauthentication.html" rel="alternate" type="text/html" title="The Curious Case of SSH PasswordAuthentication" /><published>2025-09-06T01:00:00+00:00</published><updated>2025-09-06T01:00:00+00:00</updated><id>https://tejasn.com/linux/2025/09/06/curious-case-of-ssh-passwordauthentication</id><content type="html" xml:base="https://tejasn.com/linux/2025/09/06/curious-case-of-ssh-passwordauthentication.html"><![CDATA[<p>I recently got an old Intel NUC and, as any developer would do, I decided to use it as a box to run my fun experiments on. So I installed Proxmox on it, spun up Ubuntu 22.04, and, as you’d expect, added my private SSH keys. Then I decided to disable password-based authentication in favor of public key authentication. So I ran:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span><span class="nb">sudo </span>vi /etc/ssh/sshd_config
+</code></pre></div></div>
+
+<p>and changed these lines before saving:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PasswordAuthentication no
+ChallengeResponseAuthentication no
+PubkeyAuthentication yes
+PermitRootLogin no
+</code></pre></div></div>
+
+<p>Then I ran:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span><span class="nb">sudo </span>systemctl restart ssh
+</code></pre></div></div>
+
+<p>Simple, right? But when I tried connecting to the server without ssh keys, it still asked me for my password! It had been a while since I last did this, so I was wondering if anything had changed?</p>
+
+<p>I logged back into the server to double-check if I had modified <code class="language-plaintext highlighter-rouge">sshd_config</code> or <code class="language-plaintext highlighter-rouge">ssh_config</code>, and it looked like I had edited the right file. So hang on, had <code class="language-plaintext highlighter-rouge">sshd</code> actually reloaded the new values?</p>
+
+<p>I restarted the service again and ran:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span><span class="nb">sudo </span>sshd <span class="nt">-T</span> | <span class="nb">grep</span> <span class="nt">-E</span> <span class="s1">'passwordauthentication'</span>
+passwordauthentication <span class="nb">yes</span>
+</code></pre></div></div>
+
+<p>Seeing <code class="language-plaintext highlighter-rouge">passwordauthentication</code> still set to yes confused me, since this should have been a very simple change! One part of me really wanted to ask ChatGPT about this, but the other part of me really wanted to figure it out myself. I started wondering if there was any environment variable or another file that could override this. I decided to run a grep query and voilà!</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span><span class="nb">sudo grep</span> <span class="nt">-Rni</span> passwordauthentication /etc
+/etc/ssh/sshd_config:66:PasswordAuthentication no
+/etc/ssh/sshd_config:88:# PasswordAuthentication.  Depending on your PAM configuration,
+/etc/ssh/sshd_config:92:# PAM authentication, <span class="k">then </span><span class="nb">enable </span>this but <span class="nb">set </span>PasswordAuthentication
+/etc/ssh/ssh_config:25:#   PasswordAuthentication no
+/etc/ssh/sshd_config.d/50-cloud-init.conf:1:PasswordAuthentication <span class="nb">yes</span>
+</code></pre></div></div>
+
+<p>There it was: <code class="language-plaintext highlighter-rouge">PasswordAuthentication</code> was set to <code class="language-plaintext highlighter-rouge">yes</code> in <code class="language-plaintext highlighter-rouge">/etc/ssh/sshd_config.d/50-cloud-init.conf</code>. Could this file be overriding my changes?</p>
+
+<p>I decided to delete this file since that was the only thing it was setting. Then I restarted the service and checked what sshd was loading for <code class="language-plaintext highlighter-rouge">PasswordAuthentication</code>:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span><span class="nb">sudo </span>systemctl restart ssh
+<span class="nv">$ </span><span class="nb">sudo </span>sshd <span class="nt">-T</span> | <span class="nb">grep</span> <span class="nt">-E</span> <span class="s1">'passwordauthentication'</span>
+passwordauthentication no
+</code></pre></div></div>
+
+<p>And that worked! So the <code class="language-plaintext highlighter-rouge">50-cloud-init.conf</code> file was indeed overriding my changes in <code class="language-plaintext highlighter-rouge">/etc/ssh/sshd_config</code>.</p>
+
+<p>Later, I researched more and found out that while the ability to include extra config files has existed in OpenSSH since version 7.3 (2016), what changed is that Ubuntu 22.04 started shipping with <code class="language-plaintext highlighter-rouge">/etc/ssh/sshd_config.d/50-cloud-init.conf</code> by default, and that file explicitly sets <code class="language-plaintext highlighter-rouge">PasswordAuthentication yes</code>. That’s why I didn’t remember running into this on older Ubuntu versions.</p>
+
+<p>If you open <code class="language-plaintext highlighter-rouge">/etc/ssh/sshd_config</code>, you can see where it includes <code class="language-plaintext highlighter-rouge">.conf</code> files from <code class="language-plaintext highlighter-rouge">/etc/ssh/sshd_config.d</code>:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Include /etc/ssh/sshd_config.d/*.conf
+</code></pre></div></div>
+
+<p>Deleting the file fixed it for me, but a cleaner approach might be to edit <code class="language-plaintext highlighter-rouge">/etc/ssh/sshd_config.d/50-cloud-init.conf</code>.</p>
+
+<p>In the end, I was happy that I had solved the issue, even if what should have been a simple change ended up taking a chunk of my morning.</p>]]></content><author><name></name></author><category term="linux" /><summary type="html"><![CDATA[I recently got an old Intel NUC and, as any developer would do, I decided to use it as a box to run my fun experiments on. So I installed Proxmox on it, spun up Ubuntu 22.04, and, as you’d expect, added my private SSH keys. Then I decided to disable password-based authentication in favor of public key authentication. So I ran:]]></summary></entry><entry><title type="html">Using DNS Queries to Find the Public IP Address of a Machine</title><link href="https://tejasn.com/java/2022/11/01/using-dns-query-to-find-public-ip.html" rel="alternate" type="text/html" title="Using DNS Queries to Find the Public IP Address of a Machine" /><published>2022-11-01T02:00:00+00:00</published><updated>2022-11-01T02:00:00+00:00</updated><id>https://tejasn.com/java/2022/11/01/using-dns-query-to-find-public-ip</id><content type="html" xml:base="https://tejasn.com/java/2022/11/01/using-dns-query-to-find-public-ip.html"><![CDATA[<p>We were recently implementing a feature at our company which required our custom Android devices to periodically report their public IPv4 addresses to our back end. We wanted a solution which was fast and reliable. The easiest solution to solve this was to use some existing web service like <a href="https://ifconfig.so/">https://ifconfig.so/</a> and all you had to do was to make an HTTP GET request and it would return your public IPv4 address as a response. This solution isn’t reliable though since it isn’t owned by us and could go away in future. It is a fast solution but still not the fastest and there’s still scope for improvement!</p>
+
+<p>So how can we improve this solution? An obvious way might be to host your own web service. This will make it:</p>
+
+<ol>
+  <li>
+    <p>More reliable since we’d own it. There’s no risk of the service going away unexpectedly.</p>
+  </li>
+  <li>
+    <p>Faster since only the devices owned by us would ping the web service. Less network traffic to the web server would mean better response time and server uptime(all things being comparable to the other public web services).</p>
+  </li>
+</ol>
+
+<p>I was having a quick chat about it with my boss who pointed out to me that there was a faster way to get the public IPv4 address using DNS servers.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dig +short myip.opendns.com @resolver1.opendns.com -4
+</code></pre></div></div>
+<p>You can achieve the same thing on a Windows machine with Powershell</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Resolve-DnsName -Name myip.opendns.com -Server resolver1.opendns.com
+</code></pre></div></div>
+
+<p>So what’s going under the hood? The <a href="https://www.opendns.com/">OpenDNS</a> servers have been programmed to return the public IPv4 address of the machine which tries to query for the A record of <code class="language-plaintext highlighter-rouge">resolver1.opendns.com</code>. I decided to implement this as a Java library which is now hosted at <a href="https://github.com/tejas-n/echo-my-ip">https://github.com/tejas-n/echo-my-ip</a>. I’ll explain how the library works but before we need to understand how DNS queries work.</p>
+
+<h1 id="format-of-dns-query">Format of DNS query</h1>
+<p>A DNS packet has the following structure</p>
+
+<table>
+  <tbody>
+    <tr>
+      <td>: Header :|||||||||||||||</td>
+    </tr>
+    <tr>
+      <td>: Question :|||||||||||||||</td>
+    </tr>
+    <tr>
+      <td>: Answer :|||||||||||||||</td>
+    </tr>
+    <tr>
+      <td>: Authority :|||||||||||||||</td>
+    </tr>
+    <tr>
+      <td>: Additional :|||||||||||||||</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>We can ignore the “Authority” and “Additional” sections since they are irrelevant here. The DNS query that we’ll send will contain the Header and the Question section while the response to the query will consist of the Header, Question, and Answer sections.</p>
+
+<p>The structure of the header:</p>
+
+<table>
+  <tbody>
+    <tr>
+      <td>15</td>
+      <td>14</td>
+      <td>13</td>
+      <td>12</td>
+      <td>11</td>
+      <td>10</td>
+      <td>9</td>
+      <td>8</td>
+      <td>7</td>
+      <td>6</td>
+      <td>5</td>
+      <td>4</td>
+      <td>3</td>
+      <td>2</td>
+      <td>1</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>: ID     :               |||||||||||||||</td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>:QR:</td>
+      <td>: Opcode : |||</td>
+      <td>AA</td>
+      <td>TC</td>
+      <td>RD</td>
+      <td>RA</td>
+      <td>: Z : ||</td>
+      <td>RCODE |||</td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>: QDCOUNT :       |||||||||||||||</td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>: ANCOUNT :       |||||||||||||||</td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>: NSCOUNT :       |||||||||||||||</td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>: ARCOUNT :       |||||||||||||||</td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Now let’s try to understand what the fields mean and construct the header of our query along the way:</p>
+
+<table>
+  <tbody>
+    <tr>
+      <td>**Bit**</td>
+      <td>**Meaning**</td>
+      <td>**Description**</td>
+      <td>**Value we’ll set in our query**</td>
+    </tr>
+    <tr>
+      <td>:ID:</td>
+      <td>:Identifier:</td>
+      <td>A 16-bit unique identifier assigned by the client to the query. The DNS server will use the same ID in the header of it’s corresponding reply which helps the clients to match a response with a query.</td>
+      <td>:0x0001:</td>
+    </tr>
+    <tr>
+      <td>:QR:</td>
+      <td>:Query or Response:</td>
+      <td>A 1-bit field which identifies if the message is a query(0) or a response(1).</td>
+      <td>:0:</td>
+    </tr>
+    <tr>
+      <td>:Opcode:</td>
+      <td>:Operation Code:</td>
+      <td>A 4-bit field that specifies the type of query in the message. The possible values are 0 for a standard query, 1 for an inverse query, and 2 for a server status request.</td>
+      <td>:0x0000:</td>
+    </tr>
+    <tr>
+      <td>:AA:</td>
+      <td>:Authorative Answer:</td>
+      <td>A 1-bit field which specified if the responding name server is an authority for the domain name in the question section. This field is only valid in responses.</td>
+      <td>:0:</td>
+    </tr>
+    <tr>
+      <td>:TC:</td>
+      <td>:Truncation:</td>
+      <td>A 1-bit field which denotes if the response is truncated.</td>
+      <td>:0:</td>
+    </tr>
+    <tr>
+      <td>:RD:</td>
+      <td>:Recursion Desired:</td>
+      <td>A 1-bit field which signals to the name server if it should resolve the query recursively</td>
+      <td>:0:</td>
+    </tr>
+    <tr>
+      <td>:RA:</td>
+      <td>:Recursion Available:</td>
+      <td>A 1-bit field which specifies if recursive query support is available on the name server. This is valid only in responses</td>
+      <td>:0:</td>
+    </tr>
+    <tr>
+      <td>:Z:</td>
+      <td>:Reserved:</td>
+      <td>Reserved for future use.</td>
+      <td>:0:</td>
+    </tr>
+    <tr>
+      <td>:RCODE:</td>
+      <td>:Response Code:</td>
+      <td>A 4-bit field which denotes the response code. The meaning of the codes is out of the scope of this article since we are going to ignore it anyway</td>
+      <td>:0x000:</td>
+    </tr>
+    <tr>
+      <td>:QDCOUNT:</td>
+      <td>:Question Count:</td>
+      <td>A-16 bit field specifying the number of entries in the question section</td>
+      <td>:0x0001:</td>
+    </tr>
+    <tr>
+      <td>:ANCOUNT:</td>
+      <td>:Answer Count:</td>
+      <td>A 16-bit field specifying the number of resource records in the answer section.</td>
+      <td>:0x0000:</td>
+    </tr>
+    <tr>
+      <td>:NSCOUNT:</td>
+      <td>:Authority Records Count:</td>
+      <td>A 16-bit field specifying the number of resource records in the authority records section</td>
+      <td>:0x0000:</td>
+    </tr>
+    <tr>
+      <td>:ARCOUNT:</td>
+      <td>:Additional Records Section:</td>
+      <td>A 16-bit field specifying the number of resource records in the additional records section</td>
+      <td>:0x0000:</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Now let’s look at the “Question Section” structure:</p>
+
+<table>
+  <tbody>
+    <tr>
+      <td>**Field**</td>
+      <td>**Description**</td>
+      <td>**Length in bytes**</td>
+    </tr>
+    <tr>
+      <td>NAME</td>
+      <td>Name of the requested resource</td>
+      <td>Variable</td>
+    </tr>
+    <tr>
+      <td>TYPE</td>
+      <td>Type of requested resource(A, AAAA, etc)</td>
+      <td>2</td>
+    </tr>
+    <tr>
+      <td>CLASS</td>
+      <td>Class Code</td>
+      <td>2</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Combining all the sections that we’ve defined above, this is how I’ve defined the request packet in my library:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code> private static final byte[] requestPacket = {
+            // Transaction ID: 0x0001
+            0x00, 0x1,
+            // Flags: 0x0000 (Standard query without recursion)
+            0x00, 0x00,
+            // Questions: 1
+            0x00, 0x01,
+            // Answers: 0
+            0x00, 0x00,
+            // Authority Records: 0
+            0x00, 0x00,
+            // Additional Records: 0
+            0x00, 0x00,
+            // Query for myip.opendns.com
+            0x04, 0x6d, 0x79, 0x69, 0x70, 0x07, 0x6f, 0x70, 0x65, 0x6e, 
+            0x64, 0x6e, 0x73, 0x03, 0x63, 0x6f, 0x6d, 0x00,
+            // Type A query
+            0x00, 0x01,
+            // IN
+            0x00, 0x01
+    };
+</code></pre></div></div>
+
+<p>Now let us look at the code which sends a Type A query to OpenDNS Servers to find out its public IP</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code> public String myIPv4Address() throws IOException {
+        byte[] mBuffer = new byte[50];
+        DatagramPacket sendPacket =
+                new DatagramPacket(requestPacket, requestPacket.length, InetAddress.getByName(OPENDNS_SERVER_IP), 53);
+        DatagramPacket packet = new DatagramPacket(mBuffer, mBuffer.length);
+        DatagramSocket socket = new DatagramSocket();
+        socket.send(sendPacket);
+        socket.receive(packet);
+        StringBuilder ip4StringBuilder = new StringBuilder();
+        for (int i = 46; i &lt; 50; i++) {
+            ip4StringBuilder.append(mBuffer[i] &amp; 0xFF);
+            if (i != 49) {
+                ip4StringBuilder.append(".");
+            }
+        }
+        String ipv4Address = ip4StringBuilder.toString();
+        if (!ipv4Address.equals("0.0.0.0")) {
+            return ipv4Address;
+        } else {
+            return null;
+        }
+    }
+</code></pre></div></div>
+
+<p>I think the first few lines of the code are self-explanatory. We send the request packet that we’ve already defined to the OpenDNS server on port 53 over UDP. Now let’s try to understand why we are ignoring the first 46 bytes of the response. The answer section of the response looks like this:</p>
+
+<table>
+  <tbody>
+    <tr>
+      <td>**Field**</td>
+      <td>**Description**</td>
+      <td>**Length in bytes**</td>
+    </tr>
+    <tr>
+      <td>NAME</td>
+      <td>Name of the requested resource or pointer to the resource name if it was defined before this</td>
+      <td>2 bytes if pointer, otherwise variable</td>
+    </tr>
+    <tr>
+      <td>TYPE</td>
+      <td>Type of resource(A, AAAA, etc)</td>
+      <td>2</td>
+    </tr>
+    <tr>
+      <td>CLASS</td>
+      <td>Class Code</td>
+      <td>2</td>
+    </tr>
+    <tr>
+      <td>TTL</td>
+      <td>Count of seconds that the requested resource stays valid</td>
+      <td>4</td>
+    </tr>
+    <tr>
+      <td>RDLENGTH</td>
+      <td>Length of <code class="language-plaintext highlighter-rouge">RDATA</code> field in bytes</td>
+      <td>2</td>
+    </tr>
+    <tr>
+      <td>RDATA</td>
+      <td>Record data</td>
+      <td>Defined by <code class="language-plaintext highlighter-rouge">RDLENGTH</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<p>We want to find out how many bytes in the response we need to skip to reach the <code class="language-plaintext highlighter-rouge">RDATA</code> field which should have the IP address that we need. Let’s find out how many bytes the <code class="language-plaintext highlighter-rouge">NAME</code> field of the answer section is first. DNS packets support compression that let you define a pointer to the resource name if it was defined before this. In our case, the domain name already appears in the <code class="language-plaintext highlighter-rouge">NAME</code> field of the question section, so the <code class="language-plaintext highlighter-rouge">NAME</code> field of our answer section will contain a 2 bytes pointer to that field.</p>
+
+<p>As mentioned at the beginning of the post, the response will consist of a header, the question section that we sent in our request, and the answer section described above. To reach <code class="language-plaintext highlighter-rouge">RDATA</code> of the answer section we can skip 12 bytes of the header section, 22 bytes of the question section, 2 bytes of the <code class="language-plaintext highlighter-rouge">NAME</code> field of the answer section, 2 bytes of <code class="language-plaintext highlighter-rouge">TYPE</code>, 2 bytes of <code class="language-plaintext highlighter-rouge">CLASS</code>, 4 bytes of <code class="language-plaintext highlighter-rouge">TTL</code>, and 2 bytes of <code class="language-plaintext highlighter-rouge">RDLENGTH</code> i.e. 46 bytes in total. Our IP address will be present from byte 46 to byte 49.</p>
+
+<h1 id="benchmarks">Benchmarks</h1>
+
+<p>The latency was measured by running the tools ten times and calculating an average of the latency.</p>
+
+<table>
+  <tbody>
+    <tr>
+      <td>Service</td>
+      <td>Latency</td>
+    </tr>
+    <tr>
+      <td>[echo-my-ip library](https://github.com/tejas-n/echo-my-ip) which is based on the DNS query method described in the article</td>
+      <td>15 ms</td>
+    </tr>
+    <tr>
+      <td>[Ipify](https://api.ipify.org) REST API call</td>
+      <td>315 ms</td>
+    </tr>
+    <tr>
+      <td><a href="https://ifconfig.so">https://ifconfig.so</a> REST API call</td>
+      <td>328 ms</td>
+    </tr>
+  </tbody>
+</table>
+
+<h1 id="conclusion">Conclusion</h1>
+
+<p>In the article, we saw how OpenDNS servers could be used to find out the public IPv4 address of the machine. This method is faster than using a dedicated web service for echoing back the IP. Now the question is if it’s worth it. Like everything in software development, it depends. For the majority of use cases, it won’t matter what you use, but if latency is critical for your use case, this method surely does the job better than using a web service.</p>
+
+<h1 id="references">References</h1>
+
+<p><a href="https://en.wikipedia.org/wiki/Domain_Name_System">https://en.wikipedia.org/wiki/Domain_Name_System</a></p>
+
+<p><a href="https://mislove.org/teaching/cs4700/spring11/handouts/project1-primer.pdf">https://mislove.org/teaching/cs4700/spring11/handouts/project1-primer.pdf</a></p>]]></content><author><name></name></author><category term="java" /><summary type="html"><![CDATA[We were recently implementing a feature at our company which required our custom Android devices to periodically report their public IPv4 addresses to our back end. We wanted a solution which was fast and reliable. The easiest solution to solve this was to use some existing web service like https://ifconfig.so/ and all you had to do was to make an HTTP GET request and it would return your public IPv4 address as a response. This solution isn’t reliable though since it isn’t owned by us and could go away in future. It is a fast solution but still not the fastest and there’s still scope for improvement!]]></summary></entry><entry><title type="html">How Iterative Deepening Search Combines the Best of DFS and BFS</title><link href="https://tejasn.com/artificial-intelligence/2021/07/25/iterative-deepening-search.html" rel="alternate" type="text/html" title="How Iterative Deepening Search Combines the Best of DFS and BFS" /><published>2021-07-25T08:05:00+00:00</published><updated>2021-07-25T08:05:00+00:00</updated><id>https://tejasn.com/artificial-intelligence/2021/07/25/iterative-deepening-search</id><content type="html" xml:base="https://tejasn.com/artificial-intelligence/2021/07/25/iterative-deepening-search.html"><![CDATA[<p>Breadth-first search(BFS) and Depth-first search(DFS) are the most basic uninformed search strategies used in A.I. In this article, we are going to look at how iterative deepening search combines the best of Breadth-first search(BFS) and Depth-first search(DFS). A basic understanding of graph theory in context of A.I. and “Big O Notation” is necessary to understand the article. We are going to compare the algorithms based on the following criterias:</p>
+
+<ol>
+  <li><strong>Completeness:</strong> Is the algorithm guaranteed to find a solution if there is one?</li>
+  <li><strong>Optimality:</strong> Is the algorithm guaranteed to find a solution which has the lowest path cost?</li>
+  <li><strong>Time Complexity:</strong> Time required to find a solution. It’s usually measured in terms of the number of nodes generated and is represented with the <a href="https://en.wikipedia.org/wiki/Big_O_notation">Big O Notation</a>.</li>
+  <li><strong>Space Complexity:</strong> Memory required to find a solution. It’s usually measure in terms of the maximum number of nodes stored in the memory and is represented with the <a href="https://en.wikipedia.org/wiki/Big_O_notation">Big O Notation</a>.</li>
+</ol>
+
+<h2 id="breadth-first-searchbfs">Breadth-first search(BFS)</h2>
+<p><img src="https://drive.google.com/uc?export=view&amp;id=1QG0byGiB4AwWzQFcRibwsdsZkSaexMqm" alt="Diagram of a BFS tree" /></p>
+<p style="text-align: center;"><a href="https://commons.wikimedia.org/wiki/File:Breadth-first-tree.svg">Alexander Drichel</a>, <a href="https://creativecommons.org/licenses/by/3.0">CC BY 3.0</a>, via Wikimedia Commons</p>
+
+<p>As the name suggests, BFS strategy expands the root node first, then all of its successors are expanded next and so on. If you look at the image, the numbers inside the nodes represent the order in which the nodes are expanded. In simple words, all the nodes at any given level are expanded first before any node at the next level is expanded.</p>
+
+<h3 id="pros-of-using-bfs-strategy">Pros of using BFS strategy</h3>
+<ol>
+  <li>The BFS strategy is <em>complete</em> provided the branching factor <em>b</em>(number of children at each node) is finite. It means that it is guaranteed to find the goal node at depth <em>d</em>, as it would reach the goal node eventually after expanding all the shallower nodes.</li>
+  <li>The BFS strategy is <em>optimal</em> provided the path cost is a nondecreasing function of the depth of the node(for example when all the edges have the same cost)</li>
+</ol>
+
+<h3 id="cons-of-using-bfs-strategy">Cons of using BFS strategy</h3>
+<p><strong>BFS strategy has huge memory requirements.</strong> To give you an example, consider a state space where every state has <em>b</em> successors. The search begins from the root node which generates <em>b</em> successors at the first node, then those <em>b</em> nodes generate $b^2$ nodes a the second level and so on.
+Now consider that the goal state is at level <em>d</em>, then the total number of nodes generated would be</p>
+
+<p>$b + b^2 \ + \ . . \ + \ b^d + (b^{d+1} - b) = O(b^{d+1})$</p>
+
+<p>You can clearly see that the number of nodes and space requirement grows exponentially with depth. And you have to keep all those nodes in the memory as each of them is either a fringe(nodes that have been generated but not been expanded) or is an ancestor of a fringe node.</p>
+
+<h2 id="depth-first-searchdfs">Depth-first search(DFS)</h2>
+<p><img src="https://drive.google.com/uc?export=view&amp;id=1Zrj8o9Oj3iu2eVeKfV5CO6Bg9IzEQ_wn" alt="Diagram of a BFS tree" /></p>
+<p style="text-align: center;"><a href="https://commons.wikimedia.org/wiki/File:Depth-first-tree.svg">Alexander Drichel</a>, <a href="https://creativecommons.org/licenses/by-sa/3.0">CC BY-SA 3.0</a>, via Wikimedia Commons</p>
+
+<p>DFS strategy starts at the root node and traverses a branch till it reaches the deepest node. If you refer to the image, you can see how only one node’s branch is traversed first before any of its siblings are expanded. After a deepest node with no successor in a path is reached, the search “backs up” and expands the next successor node.</p>
+
+<h3 id="pros-of-using-dfs">Pros of using DFS</h3>
+<p><strong>DFS doesn’t have high memory requirement.</strong> It needs to store only the path from the root node to a leaf node along with the unexpanded sibling nodes for each node on the path. As soon as all of the descendants of a node are explored, it can be dropped from the memory.</p>
+
+<p>As <em>b</em> nodes are generated at every level, the maximum nodes in the memory in a worst case scenario would be <em>bm + 1</em>, where m is the maximum depth(Note that <em>m</em> could be greater than <em>d</em>). Hence the space requirement is bounded by $O(bm)$</p>
+
+<h3 id="cons-of-using-dfs">Cons of using DFS</h3>
+<ol>
+  <li>DFS can get stuck in the wrong branch even when a different choice of branch could have lead to a solution near the root of the search tree. If the chosen branch is of unbounded depth, DFS would never terminate and hence <strong>its not complete.</strong></li>
+  <li><strong>DFS is not optimal</strong> since you can never know if there was any other solution at a shallower level than the found solution(Since DFS doesn’t look at sibling nodes at same level)</li>
+</ol>
+
+<h2 id="iterative-deepening-dfs">Iterative deepening DFS</h2>
+<p><img src="https://drive.google.com/uc?export=view&amp;id=1G6K6hWYzMViGSvCWLk5g48lQCBEiz7MT" alt="Diagram of an iterative deepening DFS tree" /></p>
+
+<p>Iterative deepening DFS in simple words is running DFS by gradually increasing the depth limit starting from 0, then repeating DFS from the beginning with depth limit 1, then again repeating DFS from the beginning with depth level 2, and so on, till a solution is found. So how does this combine benefits of DFS and BFS?</p>
+
+<ol>
+  <li><strong>It has modest memory requirements like DFS i.e. $O(bm)$.</strong> I think this is pretty straight forward to understand. Since its running a DFS (although by increasing the depth level with every iteration), its memory requirements would be same as DFS.</li>
+  <li><strong>It is optimal provided the path cost is a nondecreasing function of the depth of the node, like BFS.</strong> Since you are repeating the DFS strategy by increasing depth limit with every iteration, you can be sure that you traversed the siblings of your ancestors in previous iterations which in turn guarantees that no solution state existed on a shallower level.</li>
+  <li><strong>It is complete like BFS provided the branching factor is finite.</strong> Since its traversing the breadth as well - as you are repeating DFS with increasing depth levels - it cannot get stuck on an infinite path.</li>
+</ol>
+
+<p>Here is a table which gives an objective comparison:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Criterion</th>
+      <th>BFS</th>
+      <th>DFS</th>
+      <th>Iterative deepening DFS</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Time</td>
+      <td>$O(b^{d+1})$</td>
+      <td>$O(bm)$</td>
+      <td>$O(b^d)$</td>
+    </tr>
+    <tr>
+      <td>Space</td>
+      <td>$O(b^{d+1})$</td>
+      <td>$O(bm)$</td>
+      <td>$O(bd)$</td>
+    </tr>
+    <tr>
+      <td>Optimal?</td>
+      <td>Yes<sup>*</sup></td>
+      <td>No</td>
+      <td>Yes<sup>*</sup></td>
+    </tr>
+    <tr>
+      <td>Complete?</td>
+      <td>Yes<sup>+</sup></td>
+      <td>No</td>
+      <td>Yes<sup>+</sup></td>
+    </tr>
+  </tbody>
+</table>
+
+<p>* optimal if step costs are identical</p>
+
+<p>+ complete if <em>b</em> is finite</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>Iterative deepening DFS combines the memory efficiency of DFS and the completeness and optimality of BFS. You might think that IDS is inefficient since it expands many nodes multiple times in every iteration but that’s not the case since the nodes that would be generated the most number of times would be the nodes at the top. And since less number of nodes are generated at the top, it wouldn’t have a significant impact.</p>
+
+<h2 id="bibliography">Bibliography</h2>
+<p>S. Russell and P. Norvig, <em>Artificial Intelligence: A Modern Approach</em>, 2nd ed. Prentice Hall, 2003.</p>]]></content><author><name></name></author><category term="artificial-intelligence" /><summary type="html"><![CDATA[Breadth-first search(BFS) and Depth-first search(DFS) are the most basic uninformed search strategies used in A.I. In this article, we are going to look at how iterative deepening search combines the best of Breadth-first search(BFS) and Depth-first search(DFS). A basic understanding of graph theory in context of A.I. and “Big O Notation” is necessary to understand the article. We are going to compare the algorithms based on the following criterias:]]></summary></entry></feed>

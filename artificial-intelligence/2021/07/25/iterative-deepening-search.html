@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>How Iterative Deepening Search Combines the Best of DFS and BFS | Tejas’ Blog</title>
+<meta name="generator" content="Jekyll v4.2.2">
+<meta property="og:title" content="How Iterative Deepening Search Combines the Best of DFS and BFS">
+<meta property="og:locale" content="en_US">
+<meta name="description" content="Breadth-first search(BFS) and Depth-first search(DFS) are the most basic uninformed search strategies used in A.I. In this article, we are going to look at how iterative deepening search combines the best of Breadth-first search(BFS) and Depth-first search(DFS). A basic understanding of graph theory in context of A.I. and “Big O Notation” is necessary to understand the article. We are going to compare the algorithms based on the following criterias:">
+<meta property="og:description" content="Breadth-first search(BFS) and Depth-first search(DFS) are the most basic uninformed search strategies used in A.I. In this article, we are going to look at how iterative deepening search combines the best of Breadth-first search(BFS) and Depth-first search(DFS). A basic understanding of graph theory in context of A.I. and “Big O Notation” is necessary to understand the article. We are going to compare the algorithms based on the following criterias:">
+<link rel="canonical" href="https://tejasn.com/artificial-intelligence/2021/07/25/iterative-deepening-search.html">
+<meta property="og:url" content="https://tejasn.com/artificial-intelligence/2021/07/25/iterative-deepening-search.html">
+<meta property="og:site_name" content="Tejas’ Blog">
+<meta property="og:type" content="article">
+<meta property="article:published_time" content="2021-07-25T08:05:00+00:00">
+<meta name="twitter:card" content="summary">
+<meta property="twitter:title" content="How Iterative Deepening Search Combines the Best of DFS and BFS">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2021-07-25T08:05:00+00:00","datePublished":"2021-07-25T08:05:00+00:00","description":"Breadth-first search(BFS) and Depth-first search(DFS) are the most basic uninformed search strategies used in A.I. In this article, we are going to look at how iterative deepening search combines the best of Breadth-first search(BFS) and Depth-first search(DFS). A basic understanding of graph theory in context of A.I. and “Big O Notation” is necessary to understand the article. We are going to compare the algorithms based on the following criterias:","headline":"How Iterative Deepening Search Combines the Best of DFS and BFS","mainEntityOfPage":{"@type":"WebPage","@id":"https://tejasn.com/artificial-intelligence/2021/07/25/iterative-deepening-search.html"},"url":"https://tejasn.com/artificial-intelligence/2021/07/25/iterative-deepening-search.html"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/assets/css/style.css">
+<link type="application/atom+xml" rel="alternate" href="https://tejasn.com/feed.xml" title="Tejas' Blog">
+<script>MathJax={"tex":{"inlineMath":[["$","$"],["\\(","\\)"]],"displayMath":[["$$","$$"],["\\[","\\]"]]},"svg":{"fontCache":"global"}}</script><script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script><script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body>
+<header class="site-header">
+
+  <div class="wrapper">
+<a class="site-title" rel="author" href="/">Tejas' Blog</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger">
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewbox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"></path>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/about/">About</a></div>
+      </nav>
+</div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">How Iterative Deepening Search Combines the Best of DFS and BFS</h1>
+    <p class="post-meta"><time class="dt-published" datetime="2021-07-25T08:05:00+00:00" itemprop="datePublished">
+        Jul 25, 2021
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <p>Breadth-first search(BFS) and Depth-first search(DFS) are the most basic uninformed search strategies used in A.I. In this article, we are going to look at how iterative deepening search combines the best of Breadth-first search(BFS) and Depth-first search(DFS). A basic understanding of graph theory in context of A.I. and “Big O Notation” is necessary to understand the article. We are going to compare the algorithms based on the following criterias:</p>
+
+<ol>
+  <li>
+<strong>Completeness:</strong> Is the algorithm guaranteed to find a solution if there is one?</li>
+  <li>
+<strong>Optimality:</strong> Is the algorithm guaranteed to find a solution which has the lowest path cost?</li>
+  <li>
+<strong>Time Complexity:</strong> Time required to find a solution. It’s usually measured in terms of the number of nodes generated and is represented with the <a href="https://en.wikipedia.org/wiki/Big_O_notation">Big O Notation</a>.</li>
+  <li>
+<strong>Space Complexity:</strong> Memory required to find a solution. It’s usually measure in terms of the maximum number of nodes stored in the memory and is represented with the <a href="https://en.wikipedia.org/wiki/Big_O_notation">Big O Notation</a>.</li>
+</ol>
+
+<h2 id="breadth-first-searchbfs">Breadth-first search(BFS)</h2>
+<p><img src="https://drive.google.com/uc?export=view&id=1QG0byGiB4AwWzQFcRibwsdsZkSaexMqm" alt="Diagram of a BFS tree"></p>
+<p style="text-align: center;"><a href="https://commons.wikimedia.org/wiki/File:Breadth-first-tree.svg">Alexander Drichel</a>, <a href="https://creativecommons.org/licenses/by/3.0">CC BY 3.0</a>, via Wikimedia Commons</p>
+
+<p>As the name suggests, BFS strategy expands the root node first, then all of its successors are expanded next and so on. If you look at the image, the numbers inside the nodes represent the order in which the nodes are expanded. In simple words, all the nodes at any given level are expanded first before any node at the next level is expanded.</p>
+
+<h3 id="pros-of-using-bfs-strategy">Pros of using BFS strategy</h3>
+<ol>
+  <li>The BFS strategy is <em>complete</em> provided the branching factor <em>b</em>(number of children at each node) is finite. It means that it is guaranteed to find the goal node at depth <em>d</em>, as it would reach the goal node eventually after expanding all the shallower nodes.</li>
+  <li>The BFS strategy is <em>optimal</em> provided the path cost is a nondecreasing function of the depth of the node(for example when all the edges have the same cost)</li>
+</ol>
+
+<h3 id="cons-of-using-bfs-strategy">Cons of using BFS strategy</h3>
+<p><strong>BFS strategy has huge memory requirements.</strong> To give you an example, consider a state space where every state has <em>b</em> successors. The search begins from the root node which generates <em>b</em> successors at the first node, then those <em>b</em> nodes generate $b^2$ nodes a the second level and so on.
+Now consider that the goal state is at level <em>d</em>, then the total number of nodes generated would be</p>
+
+<p>$b + b^2 \ + \ . . \ + \ b^d + (b^{d+1} - b) = O(b^{d+1})$</p>
+
+<p>You can clearly see that the number of nodes and space requirement grows exponentially with depth. And you have to keep all those nodes in the memory as each of them is either a fringe(nodes that have been generated but not been expanded) or is an ancestor of a fringe node.</p>
+
+<h2 id="depth-first-searchdfs">Depth-first search(DFS)</h2>
+<p><img src="https://drive.google.com/uc?export=view&id=1Zrj8o9Oj3iu2eVeKfV5CO6Bg9IzEQ_wn" alt="Diagram of a BFS tree"></p>
+<p style="text-align: center;"><a href="https://commons.wikimedia.org/wiki/File:Depth-first-tree.svg">Alexander Drichel</a>, <a href="https://creativecommons.org/licenses/by-sa/3.0">CC BY-SA 3.0</a>, via Wikimedia Commons</p>
+
+<p>DFS strategy starts at the root node and traverses a branch till it reaches the deepest node. If you refer to the image, you can see how only one node’s branch is traversed first before any of its siblings are expanded. After a deepest node with no successor in a path is reached, the search “backs up” and expands the next successor node.</p>
+
+<h3 id="pros-of-using-dfs">Pros of using DFS</h3>
+<p><strong>DFS doesn’t have high memory requirement.</strong> It needs to store only the path from the root node to a leaf node along with the unexpanded sibling nodes for each node on the path. As soon as all of the descendants of a node are explored, it can be dropped from the memory.</p>
+
+<p>As <em>b</em> nodes are generated at every level, the maximum nodes in the memory in a worst case scenario would be <em>bm + 1</em>, where m is the maximum depth(Note that <em>m</em> could be greater than <em>d</em>). Hence the space requirement is bounded by $O(bm)$</p>
+
+<h3 id="cons-of-using-dfs">Cons of using DFS</h3>
+<ol>
+  <li>DFS can get stuck in the wrong branch even when a different choice of branch could have lead to a solution near the root of the search tree. If the chosen branch is of unbounded depth, DFS would never terminate and hence <strong>its not complete.</strong>
+</li>
+  <li>
+<strong>DFS is not optimal</strong> since you can never know if there was any other solution at a shallower level than the found solution(Since DFS doesn’t look at sibling nodes at same level)</li>
+</ol>
+
+<h2 id="iterative-deepening-dfs">Iterative deepening DFS</h2>
+<p><img src="https://drive.google.com/uc?export=view&id=1G6K6hWYzMViGSvCWLk5g48lQCBEiz7MT" alt="Diagram of an iterative deepening DFS tree"></p>
+
+<p>Iterative deepening DFS in simple words is running DFS by gradually increasing the depth limit starting from 0, then repeating DFS from the beginning with depth limit 1, then again repeating DFS from the beginning with depth level 2, and so on, till a solution is found. So how does this combine benefits of DFS and BFS?</p>
+
+<ol>
+  <li>
+<strong>It has modest memory requirements like DFS i.e. $O(bm)$.</strong> I think this is pretty straight forward to understand. Since its running a DFS (although by increasing the depth level with every iteration), its memory requirements would be same as DFS.</li>
+  <li>
+<strong>It is optimal provided the path cost is a nondecreasing function of the depth of the node, like BFS.</strong> Since you are repeating the DFS strategy by increasing depth limit with every iteration, you can be sure that you traversed the siblings of your ancestors in previous iterations which in turn guarantees that no solution state existed on a shallower level.</li>
+  <li>
+<strong>It is complete like BFS provided the branching factor is finite.</strong> Since its traversing the breadth as well - as you are repeating DFS with increasing depth levels - it cannot get stuck on an infinite path.</li>
+</ol>
+
+<p>Here is a table which gives an objective comparison:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Criterion</th>
+      <th>BFS</th>
+      <th>DFS</th>
+      <th>Iterative deepening DFS</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Time</td>
+      <td>$O(b^{d+1})$</td>
+      <td>$O(bm)$</td>
+      <td>$O(b^d)$</td>
+    </tr>
+    <tr>
+      <td>Space</td>
+      <td>$O(b^{d+1})$</td>
+      <td>$O(bm)$</td>
+      <td>$O(bd)$</td>
+    </tr>
+    <tr>
+      <td>Optimal?</td>
+      <td>Yes<sup>*</sup>
+</td>
+      <td>No</td>
+      <td>Yes<sup>*</sup>
+</td>
+    </tr>
+    <tr>
+      <td>Complete?</td>
+      <td>Yes<sup>+</sup>
+</td>
+      <td>No</td>
+      <td>Yes<sup>+</sup>
+</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>* optimal if step costs are identical</p>
+
+<p>+ complete if <em>b</em> is finite</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>Iterative deepening DFS combines the memory efficiency of DFS and the completeness and optimality of BFS. You might think that IDS is inefficient since it expands many nodes multiple times in every iteration but that’s not the case since the nodes that would be generated the most number of times would be the nodes at the top. And since less number of nodes are generated at the top, it wouldn’t have a significant impact.</p>
+
+<h2 id="bibliography">Bibliography</h2>
+<p>S. Russell and P. Norvig, <em>Artificial Intelligence: A Modern Approach</em>, 2nd ed. Prentice Hall, 2003.</p>
+
+  </div>
+<a class="u-url" href="/artificial-intelligence/2021/07/25/iterative-deepening-search.html" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/"></data>
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col">
+        <p class="feed-subscribe">
+          <a href="/feed.xml">
+            <svg class="svg-icon orange">
+              <use xlink:href="/assets/minima-social-icons.svg#rss"></use>
+            </svg><span>Subscribe</span>
+          </a>
+        </p>
+      </div>
+      <div class="footer-col">
+        <p>A personal blog of Tejas Nandanikar.</p>
+      </div>
+    </div>
+
+    <div class="social-links">
+<ul class="social-media-list"></ul>
+</div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>
