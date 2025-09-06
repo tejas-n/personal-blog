@@ -4,7 +4,6 @@ title: 'The Curious Case of SSH PasswordAuthentication'
 date: '2025-09-06 11:00:00 +1000'
 categories: linux
 ---
-# The Curious Case of SSH PasswordAuthentication
 
 I recently got an old Intel NUC and, as any developer would do, I decided to use it as a box to run my fun experiments on. So I installed Proxmox on it, spun up Ubuntu 22.04, and, as you’d expect, added my private SSH keys. Then I decided to disable password-based authentication in favor of public key authentication. So I ran:
 
