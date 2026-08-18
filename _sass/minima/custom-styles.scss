@@ -1,0 +1,15 @@
+// Long, unbreakable output — logcat lines, stack traces, shell transcripts —
+// scrolls sideways under the theme's default `pre { overflow-x: auto }`.
+// Tag such a block with `{: .wrap}` in the Markdown to soft-wrap it instead.
+.wrap {
+  &,
+  pre,
+  code {
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+  }
+
+  pre {
+    overflow-x: visible;
+  }
+}
