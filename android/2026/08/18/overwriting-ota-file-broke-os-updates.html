@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>How Overwriting the Same OTA File Broke Our Android OS Updates | Tejas’ Blog</title>
+<meta name="generator" content="Jekyll v4.2.2">
+<meta property="og:title" content="How Overwriting the Same OTA File Broke Our Android OS Updates">
+<meta property="og:locale" content="en_US">
+<meta name="description" content="TL;DR: Some of our Android 11 devices started failing OS updates after a few successful ones, with Failed to set pin_file for f2fs: ... Try again. On F2FS, Android pins the OTA file before an update so garbage collection can’t relocate its blocks, and the filesystem counts every block GC couldn’t move in an i_gc_failures counter on the file’s node. Our updater overwrote the same os_ota_update.zip in place every release instead of deleting it first, so the file kept the same node and that count never reset, until it passed F2FS’s limit of 2048 and the kernel refused to pin the file at all. Deleting the file before each download gives it a fresh node with the counter back at zero.">
+<meta property="og:description" content="TL;DR: Some of our Android 11 devices started failing OS updates after a few successful ones, with Failed to set pin_file for f2fs: ... Try again. On F2FS, Android pins the OTA file before an update so garbage collection can’t relocate its blocks, and the filesystem counts every block GC couldn’t move in an i_gc_failures counter on the file’s node. Our updater overwrote the same os_ota_update.zip in place every release instead of deleting it first, so the file kept the same node and that count never reset, until it passed F2FS’s limit of 2048 and the kernel refused to pin the file at all. Deleting the file before each download gives it a fresh node with the counter back at zero.">
+<link rel="canonical" href="https://tejasn.com/android/2026/08/18/overwriting-ota-file-broke-os-updates.html">
+<meta property="og:url" content="https://tejasn.com/android/2026/08/18/overwriting-ota-file-broke-os-updates.html">
+<meta property="og:site_name" content="Tejas’ Blog">
+<meta property="og:type" content="article">
+<meta property="article:published_time" content="2026-08-18T13:05:00+00:00">
+<meta name="twitter:card" content="summary">
+<meta property="twitter:title" content="How Overwriting the Same OTA File Broke Our Android OS Updates">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2026-08-18T13:05:00+00:00","datePublished":"2026-08-18T13:05:00+00:00","description":"TL;DR: Some of our Android 11 devices started failing OS updates after a few successful ones, with Failed to set pin_file for f2fs: ... Try again. On F2FS, Android pins the OTA file before an update so garbage collection can’t relocate its blocks, and the filesystem counts every block GC couldn’t move in an i_gc_failures counter on the file’s node. Our updater overwrote the same os_ota_update.zip in place every release instead of deleting it first, so the file kept the same node and that count never reset, until it passed F2FS’s limit of 2048 and the kernel refused to pin the file at all. Deleting the file before each download gives it a fresh node with the counter back at zero.","headline":"How Overwriting the Same OTA File Broke Our Android OS Updates","mainEntityOfPage":{"@type":"WebPage","@id":"https://tejasn.com/android/2026/08/18/overwriting-ota-file-broke-os-updates.html"},"url":"https://tejasn.com/android/2026/08/18/overwriting-ota-file-broke-os-updates.html"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/assets/css/style.css">
+<link type="application/atom+xml" rel="alternate" href="https://tejasn.com/feed.xml" title="Tejas' Blog">
+</head>
+<body>
+<header class="site-header">
+
+  <div class="wrapper">
+<a class="site-title" rel="author" href="/">Tejas' Blog</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger">
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewbox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"></path>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/about/">About</a></div>
+      </nav>
+</div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">How Overwriting the Same OTA File Broke Our Android OS Updates</h1>
+    <p class="post-meta"><time class="dt-published" datetime="2026-08-18T13:05:00+00:00" itemprop="datePublished">
+        Aug 18, 2026
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <blockquote>
+  <p><strong>TL;DR:</strong> Some of our Android 11 devices started failing OS updates after a few successful ones, with <code class="language-plaintext highlighter-rouge">Failed to set pin_file for f2fs: ... Try again</code>. On F2FS, Android pins the OTA file before an update so garbage collection can’t relocate its blocks, and the filesystem counts every block GC couldn’t move in an <code class="language-plaintext highlighter-rouge">i_gc_failures</code> counter on the file’s node. Our updater overwrote the same <code class="language-plaintext highlighter-rouge">os_ota_update.zip</code> in place every release instead of deleting it first, so the file kept the same node and that count never reset, until it passed F2FS’s limit of 2048 and the kernel refused to pin the file at all. Deleting the file before each download gives it a fresh node with the counter back at zero.</p>
+</blockquote>
+
+<p>We hit an interesting issue where some of our custom-built Android 11 devices were failing to perform an OS update after a few successful runs. They update themselves by downloading the zip file from our server to <code class="language-plaintext highlighter-rouge">os_ota_update.zip</code> in the app’s <code class="language-plaintext highlighter-rouge">filesDir</code>, and executing:</p>
+
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">RecoverySystem</span><span class="p">.</span><span class="nf">installPackage</span><span class="p">(</span><span class="n">appContext</span><span class="p">,</span> <span class="n">updateFile</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>Under the hood, that API call runs a program called <code class="language-plaintext highlighter-rouge">uncrypt</code>, which processes the <code class="language-plaintext highlighter-rouge">os_ota_update.zip</code> file on the filesystem to produce a block map, which is just a list of the physical blocks that the file occupies, so that the file contents can be read directly from the block device without mounting the filesystem.</p>
+
+<p><code class="language-plaintext highlighter-rouge">uncrypt</code> was failing on some of these devices with:</p>
+
+<div class="language-text wrap highlighter-rouge"><div class="highlight"><pre class="highlight"><code>10-15 15:21:52.849  3328  3328 E uncrypt : Failed to set pin_file for f2fs: /data/user/0/&lt;our ota updater package name&gt;/files/os_ota_update.zip on /dev/block/by-name/userdata: Try again
+10-15 15:21:52.850   575  3327 E RecoverySystemService: uncrypt failed with status: -1
+10-15 15:21:52.851   575  3327 E ShutdownThread: Error uncrypting file
+</code></pre></div></div>
+
+<p>But before we try to understand the error message, we need to know a bit about F2FS (Flash-Friendly File System), which our devices use. Everything below describes F2FS as it behaves on the 4.19 Linux kernel our devices run; some of these details have changed in later kernels.</p>
+
+<p>F2FS stores a file’s contents in fixed 4 KB “data blocks” spread across the disk and keeps track of where they are in a separate “node block” that holds the list of addresses along with the file’s metadata.</p>
+
+<p>When a user modifies the file, F2FS doesn’t overwrite anything in place. It writes the new contents to a fresh block, writes an updated copy of the node block that records the new address, and marks both the old data block and the old node block as garbage for later cleanup. Those familiar with ZFS or Btrfs will recognise the write behaviour as copy-on-write, though those filesystems apply the idea differently.</p>
+
+<p>F2FS groups blocks into larger units called segments (1 segment = 512 blocks). If every block in a segment dies, the segment becomes reusable on its own. F2FS also has a feature called “garbage collection” for the case where a segment is mostly dead but still has a few valid blocks. It roughly works as follows:</p>
+
+<ol>
+  <li>Pick a victim segment where most blocks are already invalid.</li>
+  <li>Copy the valid blocks out to the current write position and update the node blocks to point at the new copies. The originals are now invalid too.</li>
+  <li>With nothing left valid in it, the victim returns to the free pool.</li>
+</ol>
+
+<p>You’ve probably guessed by now why a GC run after <code class="language-plaintext highlighter-rouge">uncrypt</code> would be detrimental! <code class="language-plaintext highlighter-rouge">uncrypt</code> has already produced a block map file recording the physical locations of the <code class="language-plaintext highlighter-rouge">os_ota_update.zip</code> data blocks, and we wouldn’t want those blocks moving out from under it. To avoid this, <code class="language-plaintext highlighter-rouge">uncrypt</code> pins the file before it builds the map, telling F2FS that this file’s data blocks aren’t to be relocated during GC. That pin is a single ioctl, and if it fails, <code class="language-plaintext highlighter-rouge">uncrypt</code> gives up:</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">int</span> <span class="n">error</span> <span class="o">=</span> <span class="n">ioctl</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="n">F2FS_IOC_SET_PIN_FILE</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">set</span><span class="p">);</span>
+<span class="c1">// Don't break the old kernels which don't support it.</span>
+<span class="k">if</span> <span class="p">(</span><span class="n">error</span> <span class="o">&amp;&amp;</span> <span class="n">errno</span> <span class="o">!=</span> <span class="n">ENOTTY</span> <span class="o">&amp;&amp;</span> <span class="n">errno</span> <span class="o">!=</span> <span class="n">ENOTSUP</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">PLOG</span><span class="p">(</span><span class="n">ERROR</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="s">"Failed to set pin_file for f2fs: "</span> <span class="o">&lt;&lt;</span> <span class="n">path</span> <span class="o">&lt;&lt;</span> <span class="s">" on "</span> <span class="o">&lt;&lt;</span> <span class="n">blk_dev</span><span class="p">;</span>
+    <span class="k">return</span> <span class="n">kUncryptIoctlError</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Since GC can’t move the pinned data blocks of <code class="language-plaintext highlighter-rouge">os_ota_update.zip</code>, it bumps a “failure counter” called <code class="language-plaintext highlighter-rouge">i_gc_failures</code> once for every still-valid block of the pinned file it finds in a victim segment, and leaves the block in place. This counter lives in the file’s node block and is written to disk, so it survives reboots. But the pin only ever exists in memory, so it disappears when the device restarts. That means GC only collides with the file during an update, while <code class="language-plaintext highlighter-rouge">uncrypt</code> has it pinned.</p>
+
+<p>Nothing in that flow ever explicitly unpins the file, though, and an explicit unpin is the only thing that resets the counter to zero. So each update leaves its tally behind on the node, and the next one picks up where the last one left off.</p>
+
+<p>Once it passes 2048, F2FS refuses to pin the file, and from then on any attempt to pin it fails with <code class="language-plaintext highlighter-rouge">EAGAIN</code>, which <code class="language-plaintext highlighter-rouge">uncrypt</code> prints as the <code class="language-plaintext highlighter-rouge">Try again</code> at the end of that error message. That’s what we were observing on our devices.</p>
+
+<p>Whenever we released an OS update, the app responsible for downloading and installing it was simply overwriting the previous <code class="language-plaintext highlighter-rouge">os_ota_update.zip</code>. Overwriting keeps the same node, so the <code class="language-plaintext highlighter-rouge">i_gc_failures</code> stored on that node carries over. Every “fresh” download inherited the old counter, which is why it kept climbing across releases until it eventually crossed 2048.</p>
+
+<p>That is also why only some of our devices were affected. The devices that had been in the field longest reached the limit first.</p>
+
+<p>The fix was surprisingly simple. All we had to do was delete the previous <code class="language-plaintext highlighter-rouge">os_ota_update.zip</code> before downloading the new one, so the next download gets a fresh node with the counter back at zero!</p>
+
+  </div>
+<a class="u-url" href="/android/2026/08/18/overwriting-ota-file-broke-os-updates.html" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/"></data>
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col">
+        <p class="feed-subscribe">
+          <a href="/feed.xml">
+            <svg class="svg-icon orange">
+              <use xlink:href="/assets/minima-social-icons.svg#rss"></use>
+            </svg><span>Subscribe</span>
+          </a>
+        </p>
+      </div>
+      <div class="footer-col">
+        <p>A personal blog of Tejas Nandanikar.</p>
+      </div>
+    </div>
+
+    <div class="social-links">
+<ul class="social-media-list"></ul>
+</div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>
